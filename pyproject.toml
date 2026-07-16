@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "graphrag-engine"
+version = "0.1.0"
+description = "Autonomous Multi-Agent GraphRAG Intelligence Engine"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "python-multipart>=0.0.9",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "python-dotenv>=1.0.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pymupdf>=1.24.0",
+    "langdetect>=1.0.9",
+    "transformers>=4.44.0",
+    "torch>=2.4.0",
+    "sentence-transformers>=3.1.0",
+    "gliner>=0.2.13",
+    "chromadb>=0.5.0",
+    "neo4j>=5.20.0",
+    "openai>=1.40.0",
+    "ollama>=0.3.0",
+    "sumy>=0.11.0",
+    "httpx>=0.27.0",
+    "streamlit>=1.38.0",
+    "streamlit-agraph>=0.0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0",
+    "respx>=0.21.0",
+    "testcontainers>=4.7.0",
+    "types-requests>=2.32.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "agents",
+    "api",
+    "config",
+    "models",
+    "llm",
+    "graph",
+    "vector",
+    "orchestration",
+    "frontend",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+ignore = ["B008"]  # FastAPI dependency-injection decorator usage
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
