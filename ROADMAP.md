@@ -18,11 +18,14 @@ builds on the previous one and keeps every agent independently testable.
 - `SentimentAgent` (DistilBERT)
 - Insert into the LangGraph pipeline after `reader`
 
-## Phase 3 — Knowledge Graph
-- `NERAgent` (GLiNER entities + LLM relation extraction)
-- `KnowledgeGraphAgent` (Neo4j, idempotent MERGE)
-- Graph retrieval endpoint for visualization
-- Insert into the pipeline after NER; write to Neo4j in parallel with embeddings
+## Phase 3 — Knowledge Graph ✅ (implemented)
+- [x] `NERAgent` (GLiNER entities + LLM relation extraction, injectable extractor/LLM)
+- [x] `KnowledgeGraphAgent` (idempotent upsert into injectable graph store)
+- [x] Ingestion graph extended: `… → sentiment → ner → {embeddings, graph}` (parallel branch); `run_ingest` injects `graph_store`
+- [x] Ingest API surfaces `num_entities` / `graph_written` in `DocumentMeta` + response
+- [x] **`Neo4jStore.replace_document_graph`** real Cypher MERGE (doc-scoped delete-then-merge of `:Entity` nodes + typed `:RELATION` edges) — verified against live Neo4j
+- [x] **Graph retrieval endpoint** `GET /documents/{doc_id}/graph` (entities + relations via `query_graph`)
+- [ ] Hybrid QA path consumes the graph (Phase 4)
 
 ## Phase 4 — Orchestration & Hybrid GraphRAG
 - Full LangGraph `StateGraph` wiring all agents (with conditional translate edge)

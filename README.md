@@ -21,11 +21,12 @@ cp .env.example .env
 # Edit .env and set OPENROUTER_API_KEY (or switch LLM_PROVIDER=mock for a dry run)
 ```
 
-### 3. Start infrastructure (Neo4j for later phases)
+### 3. Start infrastructure (Neo4j for graph store)
 ```bash
 docker compose up -d neo4j
 ```
-ChromaDB runs embedded (no container needed) by default.
+ChromaDB runs embedded (no container needed) by default. Neo4j data persists to
+`~/docker/neo4j/data` (bind-mount, see `docker-compose.yml`).
 
 ### 4. Run the API
 ```bash
@@ -51,6 +52,7 @@ Interactive docs: http://localhost:8000/docs
 | POST | `/documents/upload` | Ingest a PDF → returns `doc_id` + chunk ids |
 | GET | `/documents` | List ingested documents |
 | GET | `/documents/{doc_id}` | Document metadata/status |
+| GET | `/documents/{doc_id}/graph` | Document entity-relation subgraph (Neo4j) |
 | POST | `/qa` | Answer a question (vector retrieval + citations) |
 | GET | `/health` | Liveness probe |
 
