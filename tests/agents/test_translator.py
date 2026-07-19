@@ -1,6 +1,3 @@
-import asyncio
-from unittest.mock import AsyncMock
-
 import pytest
 
 from agents.translator import TranslationAgent

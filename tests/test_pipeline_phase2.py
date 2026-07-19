@@ -2,58 +2,16 @@
 
 from __future__ import annotations
 
-import asyncio
 import fitz  # PyMuPDF
 from unittest.mock import patch
 
 import pytest
-
 from chromadb import EphemeralClient
 from config.settings import Settings
 from orchestration.pipeline import build_ingest_graph, run_ingest
 from vector.chroma_store import ChromaStore
 
-# Reuse fixtures from conftest by importing them via pytest
-# We'll define our own fakes similar to those in conftest for simplicity in this file,
-# but we can also import them if we mark the test to use the fixtures.
-# For simplicity, we'll define minimal fakes here.
-
-
-class FakeEmbedder:
-    """Deterministic embedder returning fixed-dimension random vectors."""
-
-    def __init__(self, dim: int = 8) -> None:
-        self.dim = dim
-
-    def encode(self, texts: list[str]):
-        import numpy as np
-
-        rng = np.random.default_rng(42)
-        return rng.random((len(texts), self.dim))
-
-
-class FakeClassifierPipe:
-    """Deterministic fake zero-shot classifier for testing."""
-
-    def __init__(self) -> None:
-        self.last_text: str = ""
-
-    def __call__(self, text: str, candidate_labels):
-        self.last_text = text
-        labels = list(candidate_labels)
-        scores = [0.7] + [0.3 / (len(labels) - 1)] * (len(labels) - 1)
-        return {"sequence": text, "labels": labels, "scores": scores}
-
-
-class FakeSentimentPipe:
-    """Deterministic mock sentiment pipeline returning a fixed label/score."""
-
-    def __init__(self) -> None:
-        self.last_text: str | None = None
-
-    def __call__(self, text: str):
-        self.last_text = text
-        return [{"label": "POSITIVE", "score": 0.9}]
+from tests.conftest import FakeEmbedder
 
 
 @pytest.fixture
@@ -110,16 +68,22 @@ async def test_english_doc_skips_translator(settings, embedder, chroma_store):
     async def _sentiment_run(state, **deps):
         return {"sentiment_label": "POSITIVE", "sentiment_score": 0.9}
 
+    async def _ner_run(state, **deps):
+        return {"entities": [], "relationships": []}
+
     with patch(
         "orchestration.pipeline.LanguageDetectionAgent"
     ) as MockLangDetect, patch(
         "orchestration.pipeline.ClassificationAgent"
     ) as MockClassifier, patch(
         "orchestration.pipeline.SentimentAgent"
-    ) as MockSentiment:
+    ) as MockSentiment, patch(
+        "orchestration.pipeline.NERAgent"
+    ) as MockNER:
         MockLangDetect.return_value.run = _langdetect_run
         MockClassifier.return_value.run = _classifier_run
         MockSentiment.return_value.run = _sentiment_run
+        MockNER.return_value.run = _ner_run
 
         # Run the ingestion pipeline.
         state = await run_ingest(
@@ -141,5 +105,6 @@ async def test_english_doc_skips_translator(settings, embedder, chroma_store):
         # Sentiment should have run.
         assert state.sentiment_label == "POSITIVE"
         assert state.sentiment_score == 0.9
-        # Embeddings should have been generated (at least one chunk).
+        # NER should have run (stubbed) and embeddings generated (at least one chunk).
+        assert state.entities == []
         assert len(state.chunk_ids) > 0

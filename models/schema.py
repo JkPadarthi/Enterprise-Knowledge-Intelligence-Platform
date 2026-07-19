@@ -62,6 +62,8 @@ class DocumentMeta(BaseModel):
     sentiment_label: Optional[str] = None
     sentiment_score: Optional[float] = None
     num_pages: Optional[int] = None
+    num_entities: Optional[int] = None
+    graph_written: bool = False
     error: Optional[str] = None
 
 

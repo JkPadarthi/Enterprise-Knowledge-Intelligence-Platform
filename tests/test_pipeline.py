@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import fitz
 import pytest
 
@@ -18,12 +20,20 @@ def _make_pdf(text: str) -> bytes:
     return data
 
 
+async def _ner_run(state, **deps):
+    # Lightweight stand-in for the (model-downloading) NERAgent so this offline
+    # smoke test exercises the orchestration graph without fetching GLiNER.
+    return {"entities": [], "relationships": []}
+
+
 @pytest.mark.asyncio
 async def test_run_ingest_indexes(embedder, chroma_store, settings):
     pdf = _make_pdf("GraphRAG ingests PDFs and builds a knowledge graph. " * 20)
-    state = await run_ingest(
-        pdf, "doc.pdf", "doc1", settings, embedder=embedder, vector_store=chroma_store
-    )
+    with patch("orchestration.pipeline.NERAgent") as MockNER:
+        MockNER.return_value.run = _ner_run
+        state = await run_ingest(
+            pdf, "doc.pdf", "doc1", settings, embedder=embedder, vector_store=chroma_store
+        )
     assert isinstance(state, AgentState)
     assert state.num_pages == 1
     assert len(state.chunk_ids) > 0

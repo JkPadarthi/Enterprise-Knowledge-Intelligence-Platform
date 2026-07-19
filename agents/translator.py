@@ -39,11 +39,11 @@ class TranslationAgent(BaseAgent):
 
     async def run(self, state: AgentState, **deps: Any) -> dict[str, Any]:
         # If the text is empty or only whitespace, or the language is already the target, skip.
-        if not state.raw_text.strip() or state.language == Settings().translate_target_lang:
+        target_lang = self.settings.translate_target_lang
+        if not state.raw_text.strip() or state.language == target_lang:
             return {}
 
         # Build the translation prompt.
-        target_lang = Settings().translate_target_lang
         system_msg = f"You are a precise translator. Translate the following document text into {target_lang}. Return ONLY the translated text, with no commentary."
         user_msg = state.raw_text
 
