@@ -6,7 +6,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from api.routes import documents, ingest, query
 from config.logging import setup_logging
 
 
@@ -18,12 +17,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="GraphRAG Engine", version="0.1.0", lifespan=lifespan)
 
-app.include_router(ingest.router)
-app.include_router(documents.router)
-app.include_router(query.router)
-
 
 @app.get("/health")
 async def health() -> dict:
     """Liveness probe."""
     return {"status": "ok"}
+
+
+from api.routes import documents, ingest, query, graph
+
+app.include_router(ingest.router)
+app.include_router(documents.router)
+app.include_router(query.router)
+app.include_router(graph.router)

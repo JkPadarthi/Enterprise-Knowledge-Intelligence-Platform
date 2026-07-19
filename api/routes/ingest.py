@@ -51,6 +51,8 @@ async def upload_document(
         meta.doc_type = state.doc_type or None
         meta.sentiment_label = state.sentiment_label or None
         meta.sentiment_score = state.sentiment_score
+        meta.num_entities = len(state.entities) if state.entities else None
+        meta.graph_written = state.graph_written
         return {
             "doc_id": doc_id,
             "filename": meta.filename,
@@ -60,4 +62,6 @@ async def upload_document(
             "doc_type": meta.doc_type,
             "sentiment_label": meta.sentiment_label,
             "sentiment_score": meta.sentiment_score,
+            "num_entities": meta.num_entities,
+            "graph_written": meta.graph_written,
         }
