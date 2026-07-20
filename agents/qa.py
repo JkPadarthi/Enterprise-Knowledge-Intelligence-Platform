@@ -42,11 +42,13 @@ class QAOrchestrator(BaseAgent):
         llm: Any | None = None,
         embedder: Embedder | None = None,
         vector_store: Any | None = None,
+        graph_store: Any | None = None,
     ) -> None:
         super().__init__(settings)
         self._llm = llm
         self._embedder = embedder
         self._vector_store = vector_store
+        self._graph_store = graph_store
 
     def _get_llm(self, role: str = "qa") -> Any:
         if self._llm is not None:
@@ -70,6 +72,15 @@ class QAOrchestrator(BaseAgent):
         from vector.chroma_store import ChromaStore
 
         return ChromaStore(self.settings)
+
+    def _get_graph_store(self, graph_store: Any | None) -> Any:
+        if graph_store is not None:
+            return graph_store
+        if self._graph_store is not None:
+            return self._graph_store
+        from graph.neo4j_store import Neo4jStore
+
+        return Neo4jStore(self.settings)
 
     async def answer(
         self,
@@ -109,6 +120,53 @@ class QAOrchestrator(BaseAgent):
             )
 
         context = "\n\n".join(context_parts)
+        
+        # Hybrid graph retrieval
+        graph_store = self._get_graph_store(deps.get("graph_store"))
+        opened_here = False
+        try:
+            if graph_store is not None:
+                # Connect if needed
+                if getattr(graph_store, "_driver", None) is None and hasattr(graph_store, "connect"):
+                    await graph_store.connect()
+                    opened_here = True
+
+                # Build Cypher query
+                if doc_id is not None:
+                    cypher = "MATCH (s:Entity)-[r]->(o:Entity) WHERE s.doc_id=$doc_id RETURN s.text AS subject, r.relation AS relation, o.text AS object"
+                    params = {"doc_id": doc_id}
+                else:
+                    cypher = "MATCH (s:Entity)-[r]->(o:Entity) RETURN s.text AS subject, r.relation AS relation, o.text AS object"
+                    params = {}
+
+                rows = await graph_store.query_graph(cypher, params)
+
+                fact_lines = []
+                for row in rows:
+                    subject = row.get("subject", "")
+                    relation = row.get("relation", "")
+                    obj = row.get("object", "")
+                    fact = f"{subject} {relation} {obj}".strip()
+                    if fact:  # only add non-empty facts
+                        fact_lines.append(fact)
+                        # Create a citation for this graph fact
+                        citations.append(
+                            Citation(
+                                chunk_id="",  # graph citations don't have chunk_id
+                                source="graph",
+                                text_excerpt=fact[:200],
+                                score=None,
+                                node_ref=subject,  # using subject as node_ref
+                            )
+                        )
+
+                if fact_lines:
+                    context += "\n\n## Knowledge graph\n" + "\n".join(fact_lines)
+
+        finally:
+            if opened_here and hasattr(graph_store, "close"):
+                await graph_store.close()
+
         messages = [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},

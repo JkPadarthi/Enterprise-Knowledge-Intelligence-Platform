@@ -24,9 +24,10 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-from api.routes import documents, ingest, query, graph
+from api.routes import documents, ingest, query, graph, summary
 
 app.include_router(ingest.router)
 app.include_router(documents.router)
 app.include_router(query.router)
 app.include_router(graph.router)
+app.include_router(summary.router)

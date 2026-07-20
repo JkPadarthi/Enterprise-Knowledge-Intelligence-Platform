@@ -1,11 +1,13 @@
-# GraphRAG Engine
+# Autonomous Multi-Agent GraphRAG Intelligence Engine
 
-Autonomous Multi-Agent GraphRAG Intelligence Engine — ingest PDFs, build a knowledge
-graph + vector index, and answer questions with cited, explainable answers.
+Ingest PDFs, build a knowledge graph + vector index, and answer questions with cited,
+explainable answers.
 
-> **Status:** Phase 1 (PDF ingestion + ChromaDB + FastAPI + LangGraph skeleton + basic
-> vector RAG) and Phase 2 (language detection, conditional translation, classification, sentiment) are implemented. Phases 3–5 are scaffolded and tracked in
-> [ROADMAP.md](ROADMAP.md).
+> **Status:** All five phases are implemented — PDF ingestion, ChromaDB vector RAG, language
+> detection / conditional translation / classification / sentiment, Neo4j knowledge graph
+> (write + retrieval), hybrid GraphRAG QA (vector + graph) with a `SummaryAgent`, and a
+> Streamlit dashboard (upload, document library, summary, QA chat, interactive graph viewer,
+> execution timeline). See [ROADMAP.md](ROADMAP.md) / [STATUS.md](STATUS.md).
 
 ## Quickstart
 
@@ -46,15 +48,36 @@ curl -X POST http://localhost:8000/qa \
 
 Interactive docs: http://localhost:8000/docs
 
-## API (Phase 1)
+## API
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/documents/upload` | Ingest a PDF → returns `doc_id` + chunk ids |
+| POST | `/documents/upload` | Ingest a PDF → returns `doc_id` + chunk ids + execution log |
 | GET | `/documents` | List ingested documents |
 | GET | `/documents/{doc_id}` | Document metadata/status |
 | GET | `/documents/{doc_id}/graph` | Document entity-relation subgraph (Neo4j) |
-| POST | `/qa` | Answer a question (vector retrieval + citations) |
+| GET | `/documents/{doc_id}/timeline` | Per-agent execution timeline (Phase 5) |
+| POST | `/qa` | Answer a question (hybrid vector + graph retrieval, dual-source citations) |
+| GET | `/documents/{doc_id}/summary` | Extractive + abstractive summary (Phase 4) |
 | GET | `/health` | Liveness probe |
+
+Citations returned by `/qa` carry `source: "vector"` (chunk-based) or `source: "graph"`
+(entity/relation-based), so every answer is traceable to its origin.
+
+## Dashboard (Phase 5)
+
+A Streamlit dashboard wraps the API:
+
+```bash
+# Terminal 1 — API
+uvicorn api.main:app --reload --port 8000
+
+# Terminal 2 — Dashboard
+streamlit run frontend/app.py
+# optional: API_BASE_URL=http://other-host:8000 streamlit run frontend/app.py
+```
+
+Pages: Upload, Document Library, Summary, QA Chat (with citations), Knowledge Graph
+(interactive streamlit-agraph viewer), and Execution Timeline.
 
 ## Project Layout
 ```

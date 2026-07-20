@@ -5,8 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from agents.qa import QAOrchestrator
-from api.deps import get_settings_dep, get_vector_store
+from api.deps import get_settings_dep, get_vector_store, get_graph_store_connected
 from config.settings import Settings
+from graph.neo4j_store import Neo4jStore
 from llm import get_llm_client
 from models.schema import QARequest, QAResponse
 from vector.chroma_store import ChromaStore
@@ -19,11 +20,12 @@ async def answer_question(
     req: QARequest,
     settings: Settings = Depends(get_settings_dep),
     store: ChromaStore = Depends(get_vector_store),
+    graph_store: Neo4jStore = Depends(get_graph_store_connected),
 ) -> QAResponse:
     """Answer a question over indexed documents with vector retrieval + citations."""
     llm = get_llm_client("qa", settings)
     orchestrator = QAOrchestrator(settings, llm=llm, vector_store=store)
-    result = await orchestrator.answer(req.question, doc_id=req.doc_id, top_k=req.top_k)
+    result = await orchestrator.answer(req.question, doc_id=req.doc_id, top_k=req.top_k, graph_store=graph_store)
     return QAResponse(
         answer=result["qa_answer"],
         citations=result["citations"],

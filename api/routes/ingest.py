@@ -53,6 +53,7 @@ async def upload_document(
         meta.sentiment_score = state.sentiment_score
         meta.num_entities = len(state.entities) if state.entities else None
         meta.graph_written = state.graph_written
+        meta.execution_log = [step.model_dump() for step in (state.execution_log or [])]
         return {
             "doc_id": doc_id,
             "filename": meta.filename,
@@ -64,4 +65,5 @@ async def upload_document(
             "sentiment_score": meta.sentiment_score,
             "num_entities": meta.num_entities,
             "graph_written": meta.graph_written,
+            "execution_log": meta.execution_log,
         }

@@ -27,17 +27,18 @@ builds on the previous one and keeps every agent independently testable.
 - [x] **Graph retrieval endpoint** `GET /documents/{doc_id}/graph` (entities + relations via `query_graph`)
 - [ ] Hybrid QA path consumes the graph (Phase 4)
 
-## Phase 4 — Orchestration & Hybrid GraphRAG
+## Phase 4 — Orchestration & Hybrid GraphRAG ✅ (implemented)
 - Full LangGraph `StateGraph` wiring all agents (with conditional translate edge)
 - `QAOrchestrator` hybrid retrieval: vector (ChromaDB) + graph (Neo4j) → cited answer
-- Explainable answers with chunk-id + node-id citations
-- `SummaryAgent` (extractive + abstractive)
+- Explainable answers with chunk-id + node-id citations (`source: "vector"` / `"graph"`)
+- `SummaryAgent` (extractive + abstractive) + `GET /documents/{doc_id}/summary` endpoint
 
-## Phase 5 — Dashboard & Experience
-- Streamlit dashboard: upload, document list, summary view, QA chat
-- Agent execution timeline
-- Knowledge-graph viewer (pyvis / streamlit-agraph)
-- Cross-document search
+## Phase 5 — Dashboard & Experience ✅ (implemented)
+- Streamlit dashboard (`frontend/app.py`): upload, document list, summary view, QA chat
+- Agent execution timeline: `run_ingest` records per-agent timing into `AgentState.execution_log`;
+  surfaced via `GET /documents/{doc_id}/timeline`
+- Knowledge-graph viewer (streamlit-agraph: interactive nodes/edges, node selection, metadata)
+- Cross-document search (QA with `doc_id=null` over all docs)
 
 ## Future Enhancements
 - Additional document types (DOCX, PPTX, HTML, Markdown) via new `ReaderAgent` backends

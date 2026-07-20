@@ -1,6 +1,6 @@
 # Status
 
-> Updated as work progresses. Last update: **Phase 3 complete (graph write + retrieval)**.
+> Updated as work progresses. Last update: **Phase 5 complete (Streamlit dashboard + execution timeline + graph viewer)**.
 
 ## Completed
 - [x] Repository scaffold: `pyproject.toml`, `.env.example`, `.gitignore`, `docker-compose.yml`
@@ -33,14 +33,23 @@
 - [x] **Phase 3 — Ingest API** surfaces `num_entities` / `graph_written` in `DocumentMeta` + response
 - [x] **Phase 3 — test suite** (NER agent + KnowledgeGraphAgent + pipeline graph-branch, no model/DB required)
 - [x] Translator agent bugfix: uses `self.settings` instead of instantiating `Settings()` twice
+- [x] **Phase 4 — `QAOrchestrator` hybrid retrieval**: vector top-k (ChromaDB) **and** Neo4j graph context merged into one LLM prompt; citations tagged `source="vector"` / `source="graph"`
+- [x] **Phase 4 — `SummaryAgent`** (`agents/summarizer.py`): extractive (lead/centrality over chunks) + abstractive (LLMClient) → `state.summary = {abstractive, extractive}`
+- [x] **Phase 4 — API**: `/qa` injects `graph_store` (dual-source citations); new `GET /documents/{doc_id}/summary` returns `state.summary` from the vector store
+- [x] **Phase 4 — test suite** (hybrid QA + SummaryAgent, injected fakes)
+- [x] **Phase 5 — Execution timeline telemetry**: `run_ingest` records per-agent order/start/end/duration/status into `AgentState.execution_log` (LangGraph reducer channel; parallel `embeddings`/`graph` branch supported)
+- [x] **Phase 5 — `GET /documents/{doc_id}/timeline`** endpoint + `DocumentMeta.execution_log` persistence from `ingest`
+- [x] **Phase 5 — Streamlit dashboard** (`frontend/app.py` + `frontend/client.py`): upload, document library, summary view, QA chat (dual-source citations), interactive knowledge-graph viewer (streamlit-agraph), execution timeline (table + duration bar chart)
+- [x] **Phase 5 — test suite** (`tests/api/test_timeline.py`: upload echo + `/timeline` + 404)
 
 ## In Progress
-- Phase 4: hybrid GraphRAG QA + summarization
+- (none — all 5 phases delivered)
 
 ## Verified
 - `pip install -e ".[dev]"` succeeds (venv at `.venv/`); all heavy deps resolved (incl. `langgraph`).
-- `pytest` passes — 32 tests (reader, chunker, embeddings, QA, pipeline, language detection,
-  translation, classification, sentiment, NER, graph builder, graph-branch pipeline, API metadata).
+- `pytest` passes — 39 tests (reader, chunker, embeddings, QA [vector + hybrid], pipeline [phases 1–3],
+  language detection, translation, classification, sentiment, NER, graph builder, summarizer,
+  graph-branch pipeline, API metadata/ingest, timeline endpoint).
 - Live Neo4j smoke test passes: `replace_document_graph` writes a doc-scoped subgraph
   (2 `:Entity` nodes + 1 typed `:RELATION` edge) and idempotent re-write deletes the
   prior subgraph cleanly; deleting one doc leaves other docs' nodes untouched.
@@ -53,9 +62,20 @@
 ## Blockers / Risks
 - Real QA answers require `OPENROUTER_API_KEY` (or `LLM_PROVIDER=ollama` with a local model);
   `LLM_PROVIDER=mock` returns canned text for dry-runs/offline tests.
-- Hybrid graph retrieval in the QA path is Phase 4 (the graph store + retrieval endpoint
-  already exist; QAOrchestrator does not yet consume the graph).
+- `langgraph` and `neo4j` are only importable from the project venv — run `pytest` from
+  inside `.venv` (e.g. `source .venv/bin/activate && pytest`), not the system Python, or
+  collection fails on `orchestration/pipeline.py` / `graph/neo4j_store.py` imports.
 
 ## Next Steps
-1. Phase 4: full LangGraph wiring + hybrid GraphRAG QA (vector + graph) + summarization.
-2. Phase 5: Streamlit dashboard, agent timeline, graph viewer.
+1. (Optional) Richer dashboard: graph filtering/search/layouts, timeline token/retry telemetry.
+2. Future enhancements (see ROADMAP): non-PDF ingestion, new agents, production scaling (Celery/ARQ, auth, multi-tenancy), managed Neo4j/ChromaDB, Kubernetes manifests.
+
+## Running the dashboard
+```bash
+source .venv/bin/activate
+# Start the API (in one terminal)
+uvicorn api.main:app --reload --port 8000
+# Start the dashboard (in another terminal)
+streamlit run frontend/app.py
+# Point the dashboard at a different API with API_BASE_URL=http://host:port
+```

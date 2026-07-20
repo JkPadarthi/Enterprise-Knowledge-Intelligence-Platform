@@ -45,17 +45,29 @@ class KnowledgeGraphAgent(BaseAgent):
             return {"graph_written": False}
 
         store = self._get_store(deps.get("graph_store"))
+        # The Neo4j driver is created lazily; open it if it isn't already
+        # connected (e.g. when the store is default-constructed here rather
+        # than injected already-open from the API dependency).
+        opened_here = False
+        if getattr(store, "_driver", None) is None and hasattr(store, "connect"):
+            await store.connect()
+            opened_here = True
+
         doc_id = state.doc_id
 
         entities = [e.model_dump() for e in state.entities]
         relations = [r.model_dump() for r in state.relationships]
 
-        # Idempotent upsert: replace this document's subgraph, then write entities/relations.
-        if hasattr(store, "replace_document_graph"):
-            await store.replace_document_graph(doc_id, entities, relations)
-        else:
-            await store.upsert_entities(entities)
-            await store.upsert_relationships(relations)
+        try:
+            # Idempotent upsert: replace this document's subgraph, then write entities/relations.
+            if hasattr(store, "replace_document_graph"):
+                await store.replace_document_graph(doc_id, entities, relations)
+            else:
+                await store.upsert_entities(entities)
+                await store.upsert_relationships(relations)
+        finally:
+            if opened_here and hasattr(store, "close"):
+                await store.close()
 
         self._log(
             "wrote %d entities, %d relations for %s",

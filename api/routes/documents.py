@@ -25,3 +25,13 @@ async def get_document(
     if doc_id not in DOCUMENT_REGISTRY:
         raise HTTPException(status_code=404, detail="Document not found")
     return DOCUMENT_REGISTRY[doc_id]
+
+
+@router.get("/{doc_id}/timeline")
+async def get_document_timeline(
+    doc_id: str, settings: Settings = Depends(get_settings_dep)
+) -> dict:
+    """Return the per-agent execution timeline for an ingested document (Phase 5)."""
+    if doc_id not in DOCUMENT_REGISTRY:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return {"doc_id": doc_id, "execution_log": DOCUMENT_REGISTRY[doc_id].execution_log}

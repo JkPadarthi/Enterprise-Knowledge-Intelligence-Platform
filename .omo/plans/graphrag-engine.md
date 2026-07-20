@@ -1,28 +1,51 @@
 # graphrag-engine - Work Plan
 
 ## TL;DR (For humans)
-<!-- Fill this LAST, after the detailed plan below is written, so it summarizes the REAL plan. -->
-<!-- Plain English for a non-engineer: NO file paths, NO todo numbers, NO wave/agent/tool names. -->
+<!-- Filled post-build: the base scaffold + Phases 1–4 are delivered. -->
 
-**What you'll get:** <fill last - deliverables in human terms, 1-2 sentences>
+**What you'll get:** A modular Python package that ingests PDFs, builds a Neo4j knowledge
+graph + ChromaDB vector index, and answers questions with hybrid (vector + graph) cited
+answers plus extractive/abstractive summaries. Phases 1–4 are implemented; Phase 5
+(Streamlit dashboard) is scaffolded but not built.
 
-**Why this approach:** <fill last - the one or two load-bearing decisions and why>
+**Why this approach:** Provider-agnostic LLM (OpenRouter default, Ollama offline, Mock for
+tests), local Sentence-Transformers embeddings, conditional translation, and LangGraph
+orchestration with dependency injection — so every agent is independently testable.
 
-**What it will NOT do:** <fill last - 1-3 plain lines mirroring Must NOT have>
+**What it will NOT do:** No Streamlit dashboard yet (Phase 5); no auth/multi-tenancy/Celery/
+K8s; no non-PDF ingestion; no training of custom models.
 
-**Effort:** <Quick | Short | Medium | Large | XL>
-**Risk:** <Low | Medium | High> - <one-line driver>
-**Decisions to sanity-check:** <fill last - the few choices worth a human glance>
-
-Your next move: <fill - e.g. approve, or run a high-accuracy review>. Full execution detail follows below.
+**Effort:** XL (built across Phases 1–4)
+**Risk:** Low–Medium — additive, DI-driven; graph→text rendering and summary prompt were the only novel surfaces.
+**Decisions to sanity-check:** (resolved during build) local ST embeddings; OpenRouter-default
+provider-agnostic LLM; conditional LLM translation; GLiNER+LLM relations; zero-shot
+classification; DistilBERT sentiment.
 
 ---
 
-> TL;DR (machine): <1 line - effort, risk, deliverables>
+> TL;DR (machine): XL effort, Low-Medium risk. Delivered: repo scaffold, config, models, LLM
+> client (OpenRouter/Ollama/Mock), ChromaDB + Neo4j stores, 9 agents (reader, language_detect,
+> translator, classifier, sentiment, ner, graph_builder, embeddings, summarizer) + QAOrchestrator,
+> LangGraph pipeline, FastAPI (upload/documents/graph/qa/summary), Phase 1–4 docs. Phase 5 pending.
 
 ## Scope
 ### Must have
+- Repo scaffold: `pyproject.toml`, `.env.example`, `.gitignore`, `docker-compose.yml` (Neo4j), package `__init__` files.
+- `config/` (pydantic-settings + structured logging); `models/schema.py` (AgentState, Entity, Relation, Chunk, DocumentMeta, Citation, QARequest/Response).
+- `llm/` provider-agnostic client: OpenRouter / Ollama / Mock backends + `get_llm_client` factory.
+- `vector/chroma_store.py` (persistent + HTTP); `graph/neo4j_store.py` (async connect/close + query_graph, MERGE writes).
+- `agents/`: BaseAgent (logging + retry), ReaderAgent (PyMuPDF), LanguageDetectionAgent, TranslationAgent (conditional), ClassificationAgent (zero-shot), SentimentAgent (DistilBERT), NERAgent (GLiNER + LLM relations), KnowledgeGraphAgent, EmbeddingAgent, SummaryAgent, QAOrchestrator (hybrid vector+graph).
+- `orchestration/pipeline.py` LangGraph `StateGraph` (reader → language_detect → conditional translator → classifier → sentiment → ner → {embeddings, graph}); `run_ingest` with injected deps.
+- `api/`: FastAPI app + deps; routes `ingest`, `documents`, `graph`, `query` (`/qa`), `summary`.
+- Tests (pytest, injected fakes, no model downloads): reader, embeddings, qa (vector + hybrid), pipeline (phases 1–3), language/translator/classifier/sentiment, ner, graph_builder, summarizer, llm mock.
+- Docs: PROJECT / ROADMAP / STATUS / DECISIONS / README kept updated through Phase 4.
+
 ### Must NOT have (guardrails, anti-slops, scope boundaries)
+- Streamlit dashboard (Phase 5 — scaffolded only).
+- Auth, multi-tenancy, Celery/ARQ task queue, Kubernetes manifests.
+- Non-PDF ingestion (DOCX/PPTX/HTML/MD).
+- Training custom classifiers/sentiment models (zero-shot / pretrained only).
+- Hardcoded Gemini SDK dependency.
 
 ## Verification strategy
 > Zero human intervention - all verification is agent-executed.
@@ -247,5 +270,18 @@ Your next move: <fill - e.g. approve, or run a high-accuracy review>. Full execu
 - [ ] F4. Scope fidelity
 
 ## Commit strategy
+- One commit per todo (see each todo's Commit line), conventional-commit style.
+- No squashing; each commit independently buildable and `pytest` green at the agent/test/docs commits.
+- Do NOT commit `.omo/` plan artifacts unless the user asks.
 
 ## Success criteria
+- Repo scaffolds and `pip install -e ".[dev]"` resolves all deps (incl. `langgraph`, `neo4j`).
+- `pytest` green with injected fakes (no model downloads / network) across reader, embeddings,
+  qa (vector + hybrid), pipeline (phases 1–3), language/translator/classifier/sentiment, ner,
+  graph_builder, summarizer, llm mock.
+- `POST /documents/upload` ingests a PDF → ChromaDB chunks + (Phase 3) Neo4j subgraph; response
+  carries `language`, `doc_type`, `sentiment_label`, `sentiment_score`, `num_entities`, `graph_written`.
+- `GET /documents/{doc_id}/graph` returns doc-scoped entities + relations; `POST /qa` returns
+  dual-source (`vector`/`graph`) citations; `GET /documents/{doc_id}/summary` returns extractive +
+  abstractive summary.
+- STATUS/ROADMAP/README reflect Phases 1–4 implemented; Phase 5 noted as next.
