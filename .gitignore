@@ -1,36 +1,5 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.eggs/
-build/
-dist/
-.ruff_cache/
-.mypy_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Environment & secrets
+*.md
+!README.md
 .env
-*.local
-
-# Virtual env
-.venv/
-venv/
-
-# Data & model caches
-data/
-models_cache/
-.chroma/
-
-# Codegraph index cache
-.codegraph/
-
-# Ephemeral orchestration session artifacts
-.omo/run-continuation/
-
-# Editors / OS
-.idea/
-.vscode/
-.DS_Store
+__pycache__/
+*.pyc
