@@ -1,4 +1,4 @@
-# Multi-Agent GraphRAG Enterprise Intelligence Engine
+# Multi-Agent GraphRAG Knowledge Intelligence Platform
 
 Ingest PDFs, build a knowledge graph + vector index, and answer questions with cited,
 explainable answers.
