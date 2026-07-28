@@ -1,8 +1,15 @@
-from fastapi.testclient import TestClient
+"""Phase 5 timeline endpoint tests."""
+
+from __future__ import annotations
+
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+from api import deps
 from api.main import app
 from models.schema import AgentState, ExecutionStep
+from tests.conftest import FakeChromaStore
 
 
 def _minimal_pdf() -> bytes:
@@ -33,7 +40,6 @@ def _minimal_pdf() -> bytes:
         b"0000000010 00000 n \n"
         b"0000000053 00000 n \n"
         b"0000000102 00000 n \n"
-        b"0000000118 00000 n \n"
         b"trailer\n"
         b"<< /Size 5 /Root 1 0 R >>\n"
         b"startxref\n"
@@ -61,34 +67,42 @@ def _state_with_log() -> AgentState:
 
 def test_upload_echoes_execution_log():
     """Phase 5: upload response includes the execution_log from run_ingest."""
-    with patch("api.routes.ingest.run_ingest", return_value=_state_with_log()):
-        client = TestClient(app)
-        resp = client.post(
-            "/documents/upload",
-            files={"file": ("tl.pdf", _minimal_pdf(), "application/pdf")},
-        )
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "execution_log" in data
-        assert len(data["execution_log"]) == 2
-        assert data["execution_log"][0]["agent"] == "reader"
+    app.dependency_overrides[deps.get_vector_store] = lambda: FakeChromaStore()
+    try:
+        with patch("api.routes.ingest.run_ingest", return_value=_state_with_log()):
+            client = TestClient(app)
+            resp = client.post(
+                "/documents/upload",
+                files={"file": ("tl.pdf", _minimal_pdf(), "application/pdf")},
+            )
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "execution_log" in data
+            assert len(data["execution_log"]) == 2
+            assert data["execution_log"][0]["agent"] == "reader"
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_timeline_endpoint_returns_log():
     """Phase 5: GET /documents/{doc_id}/timeline returns the persisted execution_log."""
-    with patch("api.routes.ingest.run_ingest", return_value=_state_with_log()):
-        client = TestClient(app)
-        doc_id = client.post(
-            "/documents/upload",
-            files={"file": ("tl.pdf", _minimal_pdf(), "application/pdf")},
-        ).json()["doc_id"]
+    app.dependency_overrides[deps.get_vector_store] = lambda: FakeChromaStore()
+    try:
+        with patch("api.routes.ingest.run_ingest", return_value=_state_with_log()):
+            client = TestClient(app)
+            doc_id = client.post(
+                "/documents/upload",
+                files={"file": ("tl.pdf", _minimal_pdf(), "application/pdf")},
+            ).json()["doc_id"]
 
-    resp = client.get(f"/documents/{doc_id}/timeline")
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["doc_id"] == doc_id
-    assert len(body["execution_log"]) == 2
-    assert [e["agent"] for e in body["execution_log"]] == ["reader", "language_detect"]
+        resp = client.get(f"/documents/{doc_id}/timeline")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["doc_id"] == doc_id
+        assert len(body["execution_log"]) == 2
+        assert [e["agent"] for e in body["execution_log"]] == ["reader", "language_detect"]
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_timeline_unknown_doc_404():

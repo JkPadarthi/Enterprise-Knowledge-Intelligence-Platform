@@ -7,10 +7,11 @@ importing the ``llm`` package never pulls in heavy SDKs unnecessarily.
 
 from __future__ import annotations
 
+from config.settings import Settings
 from llm.client import LLMClient
 
 
-def get_llm_client(role: str = "worker", settings=None) -> LLMClient:
+def get_llm_client(role: str = "worker", settings: Settings | None = None) -> LLMClient:
     """Build an :class:`LLMClient` for ``role`` ("worker" | "qa").
 
     Args:

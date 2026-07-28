@@ -14,7 +14,7 @@ from typing import Any, Protocol
 
 from agents.base import BaseAgent
 from config.settings import Settings
-from models.schema import AgentState, Citation, QAResponse
+from models.schema import AgentState, Citation
 
 _SYSTEM_PROMPT = (
     "You are a precise document-question answering assistant. "
@@ -98,7 +98,7 @@ class QAOrchestrator(BaseAgent):
         )
 
         where = {"doc_id": doc_id} if doc_id else None
-        results = store.query(query_embedding, top_k=top_k, where=where)
+        results = await loop.run_in_executor(None, store.query, query_embedding, top_k, where)
 
         ids = (results.get("ids") or [[]])[0]
         docs = (results.get("documents") or [[]])[0]
@@ -107,7 +107,7 @@ class QAOrchestrator(BaseAgent):
 
         context_parts: list[str] = []
         citations: list[Citation] = []
-        for cid, doc, meta, dist in zip(ids, docs, metas, distances):
+        for cid, doc, meta, dist in zip(ids, docs, metas, distances, strict=True):
             context_parts.append(f"[{cid}]\n{doc}")
             citations.append(
                 Citation(
@@ -133,10 +133,18 @@ class QAOrchestrator(BaseAgent):
 
                 # Build Cypher query
                 if doc_id is not None:
-                    cypher = "MATCH (s:Entity)-[r]->(o:Entity) WHERE s.doc_id=$doc_id RETURN s.text AS subject, r.relation AS relation, o.text AS object"
+                    cypher = (
+                        "MATCH (s:Entity)-[r]->(o:Entity) WHERE s.doc_id=$doc_id "
+                        "RETURN s.text AS subject, r.relation AS relation, o.text AS object "
+                        "LIMIT 1000"
+                    )
                     params = {"doc_id": doc_id}
                 else:
-                    cypher = "MATCH (s:Entity)-[r]->(o:Entity) RETURN s.text AS subject, r.relation AS relation, o.text AS object"
+                    cypher = (
+                        "MATCH (s:Entity)-[r]->(o:Entity) "
+                        "RETURN s.text AS subject, r.relation AS relation, o.text AS object "
+                        "LIMIT 1000"
+                    )
                     params = {}
 
                 rows = await graph_store.query_graph(cypher, params)

@@ -4,17 +4,16 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime
-from typing import Any
+import tempfile
+from typing import Any, cast
 
 import streamlit as st
-from streamlit_agraph import agraph, Node, Edge, Config
+from streamlit_agraph import Config, Edge, Node, agraph
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from frontend.client import APIClient, APIError
-
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -29,6 +28,13 @@ if "active_doc" not in st.session_state:
     st.session_state.active_doc = None
 if "client" not in st.session_state:
     st.session_state.client = APIClient()
+    import atexit
+
+    atexit.register(
+        lambda: st.session_state.client.close()
+        if "client" in st.session_state
+        else None
+    )
 if "documents_cache" not in st.session_state:
     st.session_state.documents_cache = []
 
@@ -36,7 +42,7 @@ if "documents_cache" not in st.session_state:
 # ─── Helper functions ─────────────────────────────────────────────────────────
 def get_client() -> APIClient:
     """Get or create the API client."""
-    return st.session_state.client
+    return cast(APIClient, st.session_state.client)
 
 
 def handle_api_error(e: APIError, context: str = "") -> None:
@@ -127,9 +133,10 @@ with st.sidebar:
     # Active document selector (shown on all pages except Upload)
     if page != "📤 Upload":
         doc_options = ["(none)"] + [
-            f"{d['filename']} ({d['id'][:8]})" for d in st.session_state.documents_cache
+            f"{d.get('filename', 'unknown')} ({d.get('id', '')[:8]})"
+            for d in st.session_state.documents_cache
         ]
-        doc_ids = [None] + [d["id"] for d in st.session_state.documents_cache]
+        doc_ids = [None] + [d.get("id", "") for d in st.session_state.documents_cache]
 
         current_idx = 0
         if st.session_state.active_doc:
@@ -149,13 +156,14 @@ with st.sidebar:
 
     # Show active doc info
     if st.session_state.active_doc:
+        active = st.session_state.active_doc
         doc = next(
-            (d for d in st.session_state.documents_cache if d["id"] == st.session_state.active_doc),
+            (d for d in st.session_state.documents_cache if d.get("id", "") == active),
             None,
         )
         if doc:
-            st.caption(f"📄 **Active:** {doc['filename']}")
-            st.caption(f"Status: {status_badge(doc['status'])}")
+            st.caption(f"📄 **Active:** {doc.get('filename', 'unknown')}")
+            st.caption(f"Status: {status_badge(doc.get('status', 'unknown'))}")
 
 
 # ─── Page: Upload ─────────────────────────────────────────────────────────────
@@ -174,13 +182,12 @@ if page == "📤 Upload":
 
         if st.button("🚀 Ingest Document", type="primary", use_container_width=True):
             # Save to temp file and upload
-            import tempfile
-
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(uploaded_file.getvalue())
-                tmp_path = tmp.name
-
+            tmp_path: str | None = None
             try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                    tmp.write(uploaded_file.getvalue())
+                    tmp_path = tmp.name
+
                 with st.spinner("Ingesting document... this may take a moment"):
                     result = get_client().upload_pdf(tmp_path)
 
@@ -189,24 +196,23 @@ if page == "📤 Upload":
                 # Display metadata
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Document ID", result["doc_id"][:8] + "...")
-                    st.metric("Filename", result["filename"])
-                    st.metric("Status", status_badge(result["status"]))
+                    st.metric("Document ID", (result.get("doc_id", "") or "")[:8] + "...")
+                    st.metric("Filename", result.get("filename", "unknown"))
+                    st.metric("Status", status_badge(result.get("status", "unknown")))
                     st.metric("Pages", result.get("num_pages", "N/A"))
                 with col2:
                     st.metric("Chunks", len(result.get("chunk_ids", [])))
                     st.metric("Entities", result.get("num_entities", 0))
                     st.metric("Graph Written", "✅ Yes" if result.get("graph_written") else "❌ No")
                     if result.get("sentiment_label"):
-                        st.metric(
-                            "Sentiment",
-                            f"{result['sentiment_label']} ({result.get('sentiment_score', 0):.2f})",
-                        )
+                        sentiment = result.get("sentiment_label", "")
+                        score = result.get("sentiment_score", 0)
+                        st.metric("Sentiment", f"{sentiment} ({score:.2f})")
 
                 # Show execution log if present
                 if result.get("execution_log"):
                     with st.expander("📋 Execution Log", expanded=False):
-                        for entry in result["execution_log"]:
+                        for entry in result.get("execution_log", []):
                             st.write(
                                 f"**{entry.get('order', '?')}. {entry.get('agent', 'unknown')}** — "
                                 f"{status_badge(entry.get('status', 'unknown'))} — "
@@ -217,7 +223,7 @@ if page == "📤 Upload":
 
                 # Button to jump to timeline
                 if st.button("📊 View Execution Timeline", use_container_width=True):
-                    set_active_doc(result["doc_id"])
+                    set_active_doc(result.get("doc_id"))
                     st.rerun()
 
                 # Refresh documents list
@@ -226,11 +232,12 @@ if page == "📤 Upload":
             except APIError as e:
                 handle_api_error(e, "Upload failed")
             finally:
-                # Clean up temp file
-                try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
+                # Clean up temp file (guaranteed even if write/upload failed)
+                if tmp_path is not None:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
 
 
 # ─── Page: Documents ──────────────────────────────────────────────────────────
@@ -250,9 +257,9 @@ elif page == "📄 Documents":
         for doc in st.session_state.documents_cache:
             df_data.append(
                 {
-                    "ID": doc["id"][:8] + "...",
-                    "Filename": doc["filename"],
-                    "Status": status_badge(doc["status"]),
+                    "ID": doc.get("id", "")[:8] + "...",
+                    "Filename": doc.get("filename", "unknown"),
+                    "Status": status_badge(doc.get("status", "unknown")),
                     "Pages": doc.get("num_pages", "—"),
                     "Language": doc.get("language", "—"),
                     "Type": doc.get("doc_type", "—"),
@@ -277,8 +284,8 @@ elif page == "📄 Documents":
         if event.selection.rows:
             selected_idx = event.selection.rows[0]
             selected_doc = st.session_state.documents_cache[selected_idx]
-            set_active_doc(selected_doc["id"])
-            st.success(f"Selected: **{selected_doc['filename']}**")
+            set_active_doc(selected_doc.get("id", ""))
+            st.success(f"Selected: **{selected_doc.get('filename', 'unknown')}**")
             st.rerun()
 
 
@@ -329,9 +336,10 @@ elif page == "💬 QA Chat":
 
     # Document selector for QA (can override active doc)
     doc_options = ["All Documents (cross-doc search)"] + [
-        f"{d['filename']} ({d['id'][:8]})" for d in st.session_state.documents_cache
+        f"{d.get('filename', 'unknown')} ({d.get('id', '')[:8]})"
+        for d in st.session_state.documents_cache
     ]
-    doc_ids = [None] + [d["id"] for d in st.session_state.documents_cache]
+    doc_ids = [None] + [d.get("id", "") for d in st.session_state.documents_cache]
 
     # Default to active doc
     default_idx = 0
@@ -363,7 +371,7 @@ elif page == "💬 QA Chat":
     with col2:
         ask_button = st.button("🔍 Ask", type="primary", use_container_width=True)
 
-    if ask_button and question.strip():
+    if ask_button and question and question.strip():
         try:
             with st.spinner("Thinking..."):
                 result = get_client().ask(question.strip(), doc_id=qa_doc_id, top_k=top_k)
@@ -387,9 +395,9 @@ elif page == "💬 QA Chat":
                             "Source": badge,
                             "Chunk / Node": c.get("chunk_id") or c.get("node_ref", "—"),
                             "Score": f"{c.get('score', 0):.3f}" if c.get("score") else "—",
-                            "Excerpt": c.get("text_excerpt", "")[:200] + "..."
-                            if len(c.get("text_excerpt", "")) > 200
-                            else c.get("text_excerpt", ""),
+                            "Excerpt": (c.get("text_excerpt") or "")[:200] + "..."
+                            if len(c.get("text_excerpt") or "") > 200
+                            else (c.get("text_excerpt") or ""),
                         }
                     )
 
@@ -402,7 +410,7 @@ elif page == "💬 QA Chat":
 
             # Model info
             if result.get("model"):
-                st.caption(f"Model: {result['model']}")
+                st.caption(f"Model: {result.get('model', '')}")
 
         except APIError as e:
             handle_api_error(e, "QA request failed")
@@ -445,25 +453,32 @@ elif page == "🕸️ Knowledge Graph":
                 }
                 default_color = "#A0A0A0"
 
-                for i, ent in enumerate(entities):
+                for ent in entities:
+                    text = ent.get("text")
+                    if not text:
+                        continue
                     label = ent.get("label", "ENTITY")
                     color = label_colors.get(label.upper(), default_color)
                     nodes.append(
                         Node(
-                            id=ent["text"],
-                            label=ent["text"],
+                            id=text,
+                            label=text,
                             size=20,
                             color=color,
-                            title=f"{ent['text']} ({label})",
+                            title=f"{text} ({label})",
                         )
                     )
 
                 for rel in relations:
+                    subject = rel.get("subject")
+                    obj = rel.get("object")
+                    if not subject or not obj:
+                        continue
                     edges.append(
                         Edge(
-                            source=rel["subject"],
-                            target=rel["object"],
-                            label=rel["relation"],
+                            source=subject,
+                            target=obj,
+                            label=rel.get("relation", ""),
                             color="#888888",
                         )
                     )
@@ -492,23 +507,27 @@ elif page == "🕸️ Knowledge Graph":
                     if selected:
                         # selected is a list of node IDs
                         node_id = selected[0] if isinstance(selected, list) else selected
-                        node_data = next((e for e in entities if e["text"] == node_id), None)
+                        node_data = next((e for e in entities if e.get("text") == node_id), None)
                         if node_data:
-                            st.markdown(f"**Entity:** {node_data['text']}")
-                            st.markdown(f"**Label:** {node_data['label']}")
+                            st.markdown(f"**Entity:** {node_data.get('text', '')}")
+                            st.markdown(f"**Label:** {node_data.get('label', '')}")
 
                             # Show connected relations
                             connected = [
                                 r
                                 for r in relations
-                                if r["subject"] == node_id or r["object"] == node_id
+                                if r.get("subject") == node_id or r.get("object") == node_id
                             ]
                             if connected:
                                 st.markdown("**Relations:**")
                                 for r in connected:
-                                    direction = "→" if r["subject"] == node_id else "←"
-                                    other = r["object"] if r["subject"] == node_id else r["subject"]
-                                    st.write(f"{direction} **{r['relation']}** — {other}")
+                                    direction = "→" if r.get("subject") == node_id else "←"
+                                    other = (
+                                        r.get("object")
+                                        if r.get("subject") == node_id
+                                        else r.get("subject")
+                                    )
+                                    st.write(f"{direction} **{r.get('relation', '')}** — {other}")
                             else:
                                 st.caption("No relations")
                         else:
@@ -569,7 +588,7 @@ elif page == "⏱️ Execution Timeline":
                 df = pd.DataFrame(df_data)
 
                 # Color-code the dataframe
-                def highlight_status(row):
+                def highlight_status(row: Any) -> list[str]:
                     if "🔴" in row["Status"]:
                         return ["background-color: #ffebee"] * len(row)
                     elif "🟢" in row["Status"]:

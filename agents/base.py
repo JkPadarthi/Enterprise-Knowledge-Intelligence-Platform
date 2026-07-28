@@ -44,4 +44,4 @@ class BaseAgent:
                 self._log("attempt %d failed: %s", logging.ERROR, attempt, exc)
                 if attempt < retries:
                     await asyncio.sleep(min(2**attempt, 10))
-        raise RuntimeError(f"{self.name} failed after {retries} attempts") from last_exc
+        raise RuntimeError(f"{self.name} failed after {retries} attempts: {last_exc}") from last_exc

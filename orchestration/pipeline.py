@@ -14,6 +14,7 @@ from typing import Any
 
 from langgraph.graph import END, StateGraph
 
+from agents.base import BaseAgent
 from agents.classifier import ClassificationAgent
 from agents.embeddings import EmbeddingAgent
 from agents.graph_builder import KnowledgeGraphAgent
@@ -34,12 +35,27 @@ async def _timed(state: AgentState, agent_name: str, coro):
 
     The step list is returned (not mutated onto state) so each node can emit it via the
     LangGraph `execution_log` reducer channel, which concatenates contributions from the
-    parallel embeddings/graph branch. Exceptions propagate unchanged so the pipeline keeps
-    its existing fail-loud behavior (a failed ingest still 500s).
+    parallel embeddings/graph branch. On failure we still record an error step (so the
+    timeline shows which agent failed) and then re-raise to preserve the existing
+    fail-loud behavior (a failed ingest still 500s).
     """
     started = time.monotonic()
     sa = _now_iso()
-    result = await coro
+    try:
+        result = await coro
+    except Exception as exc:  # noqa: BLE001 - record failure in timeline, then re-raise
+        step = ExecutionStep(
+            order=0,  # renumbered after collection; see run_ingest
+            agent=agent_name,
+            started_at=sa,
+            ended_at=_now_iso(),
+            duration_ms=round((time.monotonic() - started) * 1000, 2),
+            status="error",
+            detail=str(exc),
+        )
+        # Best-effort: surface the failure in the timeline even though we re-raise.
+        state.execution_log.append(step)
+        raise
     step = ExecutionStep(
         order=0,  # renumbered after collection; see run_ingest
         agent=agent_name,
@@ -79,35 +95,51 @@ def build_ingest_graph(
     # Define node functions. Each returns its agent result merged with a one-element
     # execution_log list; the LangGraph reducer channel concatenates all of them.
     async def reader_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "reader", reader.run(state))
+        res, step = await _timed(state, "reader", BaseAgent.run_with_retry(reader, state))
         return {**res, "execution_log": step}
 
     async def language_detect_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "language_detect", language_detect.run(state))
+        res, step = await _timed(
+            state, "language_detect", BaseAgent.run_with_retry(language_detect, state)
+        )
         return {**res, "execution_log": step}
 
     async def translator_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "translator", translator.run(state))
+        res, step = await _timed(
+            state, "translator", BaseAgent.run_with_retry(translator, state)
+        )
         return {**res, "execution_log": step}
 
     async def classifier_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "classifier", classifier.run(state))
+        res, step = await _timed(
+            state, "classifier", BaseAgent.run_with_retry(classifier, state)
+        )
         return {**res, "execution_log": step}
 
     async def sentiment_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "sentiment", sentiment.run(state))
+        res, step = await _timed(
+            state, "sentiment", BaseAgent.run_with_retry(sentiment, state)
+        )
         return {**res, "execution_log": step}
 
     async def ner_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "ner", ner.run(state))
+        res, step = await _timed(state, "ner", BaseAgent.run_with_retry(ner, state))
         return {**res, "execution_log": step}
 
     async def embeddings_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "embeddings", embeddings.run(state, vector_store=vector_store))
+        res, step = await _timed(
+            state,
+            "embeddings",
+            BaseAgent.run_with_retry(embeddings, state, vector_store=vector_store),
+        )
         return {**res, "execution_log": step}
 
     async def graph_node(state: AgentState) -> dict[str, Any]:
-        res, step = await _timed(state, "graph", graph_builder.run(state, graph_store=graph_store))
+        res, step = await _timed(
+            state,
+            "graph",
+            BaseAgent.run_with_retry(graph_builder, state, graph_store=graph_store),
+        )
         return {**res, "execution_log": step}
 
     # Add nodes

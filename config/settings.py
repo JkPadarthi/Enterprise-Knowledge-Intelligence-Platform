@@ -7,7 +7,6 @@ codebase reads configuration through one typed object (`get_settings()`).
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -39,7 +38,7 @@ class Settings(BaseSettings):
 
     # ── Vector store (ChromaDB) ───────────────────────────────────────────────
     chroma_persist_dir: str = "./data/chroma"
-    chroma_host: Optional[str] = None
+    chroma_host: str | None = None
     chroma_port: int = 8000
 
     # ── Text chunking ─────────────────────────────────────────────────────────
@@ -61,6 +60,9 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
+
+    # ── API auth (empty = open access) ────────────────────────────────────────
+    api_key: str = ""
 
     @property
     def doc_type_label_list(self) -> list[str]:

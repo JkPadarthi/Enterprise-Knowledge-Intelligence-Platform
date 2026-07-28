@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from chromadb import EphemeralClient
 
 from config.settings import Settings
-from vector.chroma_store import ChromaStore
+from models.schema import Chunk
 
 
 class FakeEmbedder:
@@ -42,6 +41,94 @@ class FakeClassifierPipe:
         return {"sequence": text, "labels": labels, "scores": scores}
 
 
+class FakeChromaStore:
+    """In-memory fake ChromaStore for testing without ChromaDB."""
+
+    def __init__(self):
+        self._chunks = {}
+        self._embeddings = {}
+
+    def add_chunks(self, chunks: list[Chunk], embeddings: list[list[float]]) -> None:
+        for chunk, emb in zip(chunks, embeddings, strict=True):
+            self._chunks[chunk.id] = chunk
+            self._embeddings[chunk.id] = emb
+
+    def query(
+        self, query_embedding: list[float], top_k: int = 5, where: dict = None
+    ) -> dict:
+        import numpy as np
+
+        if not self._embeddings:
+            return {"ids": [[]], "documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+        q = np.array(query_embedding)
+        scores = []
+        for cid, emb in self._embeddings.items():
+            e = np.array(emb)
+            if np.linalg.norm(e) > 0 and np.linalg.norm(q) > 0:
+                sim = float(np.dot(q, e) / (np.linalg.norm(q) * np.linalg.norm(e)))
+            else:
+                sim = 0.0
+            scores.append((cid, sim))
+
+        scores.sort(key=lambda x: x[1], reverse=True)
+        top = scores[:top_k]
+
+        if where and "doc_id" in where:
+            doc_id = where["doc_id"]
+            top = [(cid, sim) for cid, sim in top if self._chunks[cid].doc_id == doc_id]
+
+        ids = [[cid for cid, _ in top]]
+        docs = [[self._chunks[cid].text for cid, _ in top]]
+        metas = [[self._chunk_meta(cid) for cid, _ in top]]
+        dists = [[1.0 - sim for _, sim in top]]
+
+        return {"ids": ids, "documents": docs, "metadatas": metas, "distances": dists}
+
+    def _chunk_meta(self, cid: str) -> dict:
+        chunk = self._chunks[cid]
+        return {**chunk.metadata, "doc_id": chunk.doc_id, "index": chunk.index}
+
+    def get_by_doc(self, doc_id: str) -> dict:
+        result = {"ids": [], "documents": [], "metadatas": []}
+        for cid, chunk in self._chunks.items():
+            if chunk.doc_id == doc_id:
+                result["ids"].append(cid)
+                result["documents"].append(chunk.text)
+                result["metadatas"].append(self._chunk_meta(cid))
+        return result
+
+    def count(self) -> int:
+        return len(self._chunks)
+
+
+class FakeNeo4jStore:
+    """In-memory fake Neo4jStore for testing without Neo4j."""
+
+    def __init__(self):
+        self._nodes = []
+        self._edges = []
+        self._connected = False
+
+    async def connect(self):
+        self._connected = True
+
+    async def close(self):
+        self._connected = False
+
+    def upsert_nodes(self, nodes):
+        self._nodes.extend(nodes)
+
+    def upsert_edges(self, edges):
+        self._edges.extend(edges)
+
+    def get_subgraph(self, doc_id):
+        return {"nodes": [], "edges": []}
+
+    def get_document_metadata(self, doc_id):
+        return {}
+
+
 @pytest.fixture
 def settings(tmp_path) -> Settings:
     return Settings(chunk_size=200, chunk_overlap=20, chroma_persist_dir=str(tmp_path / "chroma"))
@@ -53,18 +140,8 @@ def embedder() -> FakeEmbedder:
 
 
 @pytest.fixture
-def chroma_store(settings) -> ChromaStore:
-    import uuid
-
-    store = ChromaStore(settings)
-    # EphemeralClient is process-wide in this chromadb version, so use a unique
-    # collection name per test to avoid cross-test contamination of counts.
-    store._client = EphemeralClient()
-    collection_name = f"test_{uuid.uuid4().hex}"
-    store._collection = store._client.get_or_create_collection(
-        collection_name, metadata={"hnsw:space": "cosine"}
-    )
-    return store
+def chroma_store():
+    return FakeChromaStore()
 
 
 @pytest.fixture

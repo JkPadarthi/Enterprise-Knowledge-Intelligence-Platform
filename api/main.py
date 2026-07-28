@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from config.logging import setup_logging
+from config.settings import get_settings
 
 
 @asynccontextmanager
@@ -16,6 +18,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="GraphRAG Engine", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def api_key_auth(request: Request, call_next):
+    settings = get_settings()
+    if settings.api_key and request.url.path != "/health":
+        if request.headers.get("Authorization") != f"Bearer {settings.api_key}":
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/health")

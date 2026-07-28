@@ -27,17 +27,16 @@ async def get_summary(
     # Create summarizer agent
     agent = SummaryAgent(settings, llm=llm, embedder=None)
     
-    # Get document chunks from vector store
+    # Get document chunks from vector store. ChromaDB's collection.get() returns
+    # a flat list; tolerate one level of nesting for query-shaped fakes.
     result = vector_store.get_by_doc(doc_id)
-    documents = result.get("documents", [])
-    
-    # Flatten list of lists and join with newlines
-    if documents:
-        # Flatten the list of lists
-        flat_chunks = [chunk for sublist in documents for chunk in sublist]
-        text = "\n".join(flat_chunks)
-    else:
-        text = ""
+    documents = result.get("documents") or []
+    flat_chunks = [
+        chunk
+        for sublist in documents
+        for chunk in (sublist if isinstance(sublist, list) else [sublist])
+    ]
+    text = "\n".join(chunk for chunk in flat_chunks if chunk)
     
     # If no chunks, return empty summary
     if not text:

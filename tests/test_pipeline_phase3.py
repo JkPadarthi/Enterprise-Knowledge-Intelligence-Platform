@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
-import fitz  # PyMuPDF
 from unittest.mock import patch
 
+import fitz  # PyMuPDF
 import pytest
-from chromadb import EphemeralClient
+
 from config.settings import Settings
 from orchestration.pipeline import build_ingest_graph, run_ingest
-from vector.chroma_store import ChromaStore
+from tests.conftest import FakeChromaStore, FakeEmbedder
 
-from tests.conftest import FakeEmbedder
+
+class FakeGraphStore:
+    """Records the doc-scoped subgraph write from KnowledgeGraphAgent."""
+
+    def __init__(self) -> None:
+        self.written: dict[str, tuple[list, list]] = {}
+
+    async def replace_document_graph(
+        self, doc_id: str, entities: list, relationships: list
+    ) -> None:
+        self.written[doc_id] = (entities, relationships)
 
 
 @pytest.fixture
@@ -25,28 +35,8 @@ def embedder() -> FakeEmbedder:
 
 
 @pytest.fixture
-def chroma_store(settings) -> ChromaStore:
-    import uuid
-
-    store = ChromaStore(settings)
-    # EphemeralClient is process-wide in this chromadb version, so use a unique
-    # collection name per test to avoid cross-test contamination of counts.
-    store._client = EphemeralClient()
-    collection_name = f"test_{uuid.uuid4().hex}"
-    store._collection = store._client.get_or_create_collection(
-        collection_name, metadata={"hnsw:space": "cosine"}
-    )
-    return store
-
-
-class FakeGraphStore:
-    """Records the doc-scoped subgraph write from KnowledgeGraphAgent."""
-
-    def __init__(self) -> None:
-        self.written: dict[str, tuple[list, list]] = {}
-
-    async def replace_document_graph(self, doc_id: str, entities: list, relationships: list) -> None:
-        self.written[doc_id] = (entities, relationships)
+def chroma_store() -> FakeChromaStore:
+    return FakeChromaStore()
 
 
 @pytest.mark.asyncio
